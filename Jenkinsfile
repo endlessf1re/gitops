@@ -41,7 +41,7 @@ pipeline {
         }
 
         stage('Update GitOps') {
-            steps {
+            steps {   // ← ЭТО БЫЛО ПРОПУЩЕНО
                 script {
                     sh """
                         rm -rf gitops-tmp
