@@ -9,8 +9,8 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
-                script {
+                script { // ← Теперь и checkout, и переменнаяCOMMIT находятся внутри script
+                    checkout scm
                     env.COMMIT = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
                 }
             }
@@ -41,7 +41,7 @@ pipeline {
         }
 
         stage('Update GitOps') {
-            steps {   // ← ЭТО БЫЛО ПРОПУЩЕНО
+            steps {   
                 script {
                     sh """
                         rm -rf gitops-tmp
