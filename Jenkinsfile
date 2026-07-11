@@ -1,6 +1,8 @@
 pipeline {
-    agent any
-
+    agent {
+        label 'k3d-agent' // Наш настроенный шаблон
+    }
+    // ... ваши этапы Checkout, Build, Push и Deploy ...
     environment {
         NEXUS_URL = 'http://localhost:5000'
         IMAGE_NAME = 'myapp-flask'
