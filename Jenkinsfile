@@ -72,6 +72,25 @@ spec:
                 }
             }
         }
+        stage('Wait for Docker daemon') {
+    steps {
+        container('docker-cli') {
+            sh '''
+                echo "Waiting for docker daemon..."
+                for i in $(seq 1 30); do
+                    if docker info >/dev/null 2>&1; then
+                        echo "Docker daemon is ready"
+                        exit 0
+                    fi
+                    echo "Attempt $i/30: daemon not ready yet, sleeping 2s..."
+                    sleep 2
+                done
+                echo "Docker daemon did not become ready in time"
+                exit 1
+            '''
+        }
+    }
+}
         stage('Build Docker Image') {
     steps {
         container('docker-cli') {
