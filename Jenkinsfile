@@ -1,10 +1,37 @@
 pipeline {
     agent {
-        label 'k3d-agent' // Наш настроенный шаблон динамического пода
+        kubernetes {
+            // Описываем под прямо в коде — это гарантирует, что пайплайн запустится везде одинаково
+            yaml """
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    component: jenkins-agent
+spec:
+  # Наш настроенный контекст безопасности для доступа к сокету
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 1000
+    supplementalGroups: [984]
+  containers:
+  # Основной контейнер со встроенной утилитой docker
+  - name: docker-cli
+    image: docker:24.0.7-cli
+    command: ['cat']
+    tty: true
+    volumeMounts:
+    - mountPath: /var/run/docker.sock
+      name: docker-sock
+  volumes:
+  - name: docker-sock
+    hostPath:
+      path: /var/run/docker.sock
+"""
+        }
     }
 
     environment {
-        // Указываем стабильное имя хоста для доступа из контейнера k3d к хосту
         NEXUS_URL = 'host.k3d.internal:5000'
         IMAGE_NAME = 'myapp-flask'
     }
@@ -21,24 +48,28 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    // Сборка образа на хосте через проброшенный docker.sock
-                    sh "docker build -t ${IMAGE_NAME}:${COMMIT} ."
+                // Говорим Дженкинсу выполнять сборку внутри контейнера docker-cli
+                container('docker-cli') {
+                    script {
+                        sh "docker build -t ${IMAGE_NAME}:${COMMIT} ."
+                    }
                 }
             }
         }
 
         stage('Push to Nexus') {
             steps {
-                script {
-                    sh "docker tag ${IMAGE_NAME}:${COMMIT} ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}"
-                    withCredentials([usernamePassword(
-                        credentialsId: 'nexus-creds',
-                        usernameVariable: 'NEXUS_USER',
-                        passwordVariable: 'NEXUS_PASS'
-                    )]) {
-                        sh "docker login -u ${NEXUS_USER} -p ${NEXUS_PASS} ${NEXUS_URL}"
-                        sh "docker push ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}"
+                container('docker-cli') {
+                    script {
+                        sh "docker tag ${IMAGE_NAME}:${COMMIT} ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}"
+                        withCredentials([usernamePassword(
+                            credentialsId: 'nexus-creds',
+                            usernameVariable: 'NEXUS_USER',
+                            passwordVariable: 'NEXUS_PASS'
+                        )]) {
+                            sh "docker login -u ${NEXUS_USER} -p ${NEXUS_PASS} ${NEXUS_URL}"
+                            sh "docker push ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}"
+                        }
                     }
                 }
             }
@@ -47,17 +78,12 @@ pipeline {
         stage('Update GitOps') {
             steps {   
                 script {
-                    // Оборачиваем в ваш SSH-ключ, чтобы агент имел право пушить в репозиторий GitHub
                     sshagent(['git-key']) {
                         sh """
                             rm -rf gitops-tmp
-                            # Явно отключаем проверку хостов для автоматизации клонирования
                             git -c core.sshCommand="ssh -o StrictHostKeyChecking=no" clone git@github.com:endlessfire1/gitops.git gitops-tmp
                             cd gitops-tmp
-                            
-                            # Обновляем тег образа в манифесте
                             sed -i "s|image: .*|image: ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}|g" apps/myapp/deployment.yaml
-                            
                             git config user.name "Jenkins CI"
                             git config user.email "jenkins@local"
                             git add .
