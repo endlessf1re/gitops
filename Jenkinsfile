@@ -65,13 +65,6 @@ spec:
                 }
             }
         }
-        stage('Debug workspace') {
-    steps {
-        container('docker-cli') {
-            sh 'pwd && ls -la && find / -maxdepth 6 -name Dockerfile 2>/dev/null'
-        }
-    }
-}
         stage('Build Docker Image') {
             steps {
                 container('docker-cli') {
