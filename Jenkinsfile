@@ -8,75 +8,60 @@ metadata:
   labels:
     component: jenkins-agent
 spec:
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 1000
+    supplementalGroups: [984]
   containers:
   - name: docker-cli
     image: docker:24.0.7-cli
-    imagePullPolicy: IfNotPresent
+    imagePullPolicy: Never
     command: ['cat']
     tty: true
-    env:
-    - name: DOCKER_HOST
-      value: tcp://localhost:2375
-  - name: dind
-    image: docker:24.0.7-dind
-    securityContext:
-      privileged: true
-    env:
-    - name: DOCKER_TLS_CERTDIR
-      value: ""
     volumeMounts:
-    - name: docker-storage
-      mountPath: /var/lib/docker
+    - mountPath: /var/run/docker.sock
+      name: docker-sock
   - name: jnlp
-    image: host.k3d.internal:5000/jenkins/inbound-agent:latest
-    imagePullPolicy: IfNotPresent
+    image: jenkins/inbound-agent:local-built
+    imagePullPolicy: Never
+    volumeMounts:
+    - mountPath: /var/run/docker.sock
+      name: docker-sock
   volumes:
-  - name: docker-storage
-    emptyDir: {}
+  - name: docker-sock
+    hostPath:
+      path: /var/run/docker.sock
 """
         }
     }
+
     environment {
-      NEXUS_URL = 'host.k3d.internal:5000'
-      IMAGE_NAME = 'myapp-flask'
-      DOCKER_CONFIG = '/tmp/docker-config'
-      DOCKER_BUILDKIT = '0'
+        NEXUS_URL = 'host.k3d.internal:5000'
+        IMAGE_NAME = 'myapp-flask'
     }
+
     stages {
         stage('Checkout') {
             steps {
-                script {
+                script { 
                     checkout scm
                     env.COMMIT = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
-                    echo "COMMIT = ${env.COMMIT}"
-                    echo "IMAGE_NAME = ${env.IMAGE_NAME}"
                 }
             }
         }
-        stage('Prepare Docker Config') {
-            steps {
-                container('docker-cli') {
-                    script {
-                        sh """
-                            mkdir -p ${DOCKER_CONFIG}
-                            chmod 700 ${DOCKER_CONFIG}
-                        """
-                    }
-                }
-            }
-        }
+
         stage('Build Docker Image') {
             steps {
                 container('docker-cli') {
                     script {
-                        if (!env.COMMIT || !env.IMAGE_NAME) {
-                            error "Переменные IMAGE_NAME или COMMIT пустые!"
+                        withEnv(['DOCKER_CONFIG=/home/jenkins/agent/.docker']) {
+                            sh "docker build -t ${IMAGE_NAME}:${COMMIT} ."
                         }
-                        sh "docker build -t ${IMAGE_NAME}:${COMMIT} ."
                     }
                 }
             }
         }
+
         stage('Push to Nexus') {
             steps {
                 container('docker-cli') {
@@ -87,17 +72,18 @@ spec:
                             usernameVariable: 'NEXUS_USER',
                             passwordVariable: 'NEXUS_PASS'
                         )]) {
-                            sh """
-                                docker login -u ${NEXUS_USER} -p ${NEXUS_PASS} ${NEXUS_URL}
-                                docker push ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}
-                            """
+                            withEnv(['DOCKER_CONFIG=/home/jenkins/agent/.docker']) {
+                                sh "docker login -u ${NEXUS_USER} -p ${NEXUS_PASS} ${NEXUS_URL}"
+                                sh "docker push ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}"
+                            }
                         }
                     }
                 }
             }
         }
+
         stage('Update GitOps') {
-            steps {
+            steps {   
                 script {
                     sshagent(['git-key']) {
                         sh """
@@ -116,6 +102,7 @@ spec:
             }
         }
     }
+
     post {
         always {
             sh "rm -rf gitops-tmp"
