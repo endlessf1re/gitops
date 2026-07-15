@@ -22,7 +22,7 @@ spec:
     - mountPath: /var/run/docker.sock
       name: docker-sock
   - name: jnlp
-    image: jenkins/inbound-agent:local-built
+    image: host.k3d.internal:5000/jenkins/inbound-agent
     imagePullPolicy: Never
     volumeMounts:
     - mountPath: /var/run/docker.sock
