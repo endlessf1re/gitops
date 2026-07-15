@@ -34,7 +34,7 @@ spec:
         }
     }
     environment {
-        NEXUS_URL = 'host.k3d.internal:8083'
+        NEXUS_URL = 'host.k3d.internal:5000'
         IMAGE_NAME = 'myapp-flask'
         DOCKER_CONFIG = '/tmp/docker-config'   // доступно для записи
         DOCKER_BUILDKIT = '0'
@@ -109,7 +109,7 @@ spec:
                     script {
                         sh "docker tag ${IMAGE_NAME}:${COMMIT} ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}"
                         withCredentials([usernamePassword(
-                            credentialsId: 'nexus-cred',
+                            credentialsId: 'nexus-creds',
                             usernameVariable: 'NEXUS_USER',
                             passwordVariable: 'NEXUS_PASS'
                         )]) {
