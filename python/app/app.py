@@ -43,4 +43,4 @@ def handle_data():
         return jsonify([{"id": r[0], "content": r[1]} for r in rows])
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5003)
