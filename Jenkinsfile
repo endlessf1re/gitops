@@ -1,7 +1,6 @@
 pipeline {
     agent {
         kubernetes {
-            // Декларативно описываем чистый под-агент
             yaml """
 apiVersion: v1
 kind: Pod
@@ -9,23 +8,22 @@ metadata:
   labels:
     component: jenkins-agent
 spec:
-  # Наш проверенный контекст безопасности для доступа к сокету хоста
   securityContext:
     runAsUser: 1000
     runAsGroup: 1000
     supplementalGroups: [984]
   containers:
-  # 1. Берем утилиту docker через проверенное HTTPS-зеркало (обойдем ошибку unknown authority)
   - name: docker-cli
-    image: cr.yandex/mirror/library/docker:24.0.7-cli
+    image: docker:24.0.7-cli
+    imagePullPolicy: Never
     command: ['cat']
     tty: true
     volumeMounts:
     - mountPath: /var/run/docker.sock
       name: docker-sock
-  # 2. Переопределяем служебный контейнер на образ, который ты УЖЕ импортировал в k3d
   - name: jnlp
     image: jenkins/inbound-agent:local-built
+    imagePullPolicy: Never
     volumeMounts:
     - mountPath: /var/run/docker.sock
       name: docker-sock
@@ -38,7 +36,6 @@ spec:
     }
 
     environment {
-        // Настройки Нексуса остаются только для этапа пуша твоего приложения
         NEXUS_URL = 'host.k3d.internal:5000'
         IMAGE_NAME = 'myapp-flask'
     }
@@ -57,7 +54,6 @@ spec:
             steps {
                 container('docker-cli') {
                     script {
-                        // Перенаправляем домашнюю папку докера, чтобы не было ошибки mkdir permission denied
                         withEnv(['DOCKER_CONFIG=/home/jenkins/agent/.docker']) {
                             sh "docker build -t ${IMAGE_NAME}:${COMMIT} ."
                         }
@@ -89,16 +85,12 @@ spec:
         stage('Update GitOps') {
             steps {   
                 script {
-                    // Используем твой рабочий SSH-ключ для отправки кода на GitHub
                     sshagent(['git-key']) {
                         sh """
                             rm -rf gitops-tmp
                             git -c core.sshCommand="ssh -o StrictHostKeyChecking=no" clone git@github.com:endlessf1re/gitops.git gitops-tmp
                             cd gitops-tmp
-                            
-                            # Находим и заменяем тег образа на новый хэш коммита
                             sed -i "s|image: .*|image: ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}|g" apps/myapp/deployment.yaml
-                            
                             git config user.name "Jenkins CI"
                             git config user.email "jenkins@local"
                             git add .
