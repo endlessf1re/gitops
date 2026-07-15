@@ -38,8 +38,8 @@ spec:
     environment {
         NEXUS_URL = 'host.k3d.internal:5000'
         IMAGE_NAME = 'myapp-flask'
-        // Задаём каталог для Docker-конфига, доступный для пользователя 1000
-        DOCKER_CONFIG = '/home/jenkins/.docker'
+        // Используем /tmp, доступный для записи всем
+        DOCKER_CONFIG = '/tmp/docker-config'
     }
 
     stages {
@@ -48,7 +48,6 @@ spec:
                 script { 
                     checkout scm
                     env.COMMIT = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
-                    // Выводим для отладки
                     echo "COMMIT = ${env.COMMIT}"
                     echo "IMAGE_NAME = ${env.IMAGE_NAME}"
                 }
@@ -59,7 +58,7 @@ spec:
             steps {
                 container('docker-cli') {
                     script {
-                        // Создаём каталог для конфига и устанавливаем права (на случай, если он не существует)
+                        // Создаём каталог и даём права (владелец – текущий пользователь с UID 1000)
                         sh """
                             mkdir -p ${DOCKER_CONFIG}
                             chmod 700 ${DOCKER_CONFIG}
@@ -73,7 +72,6 @@ spec:
             steps {
                 container('docker-cli') {
                     script {
-                        // Проверяем, что переменные не пустые
                         if (!env.COMMIT || !env.IMAGE_NAME) {
                             error "Переменные IMAGE_NAME или COMMIT пустые!"
                         }
