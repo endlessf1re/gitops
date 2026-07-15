@@ -15,15 +15,15 @@ spec:
   containers:
   - name: docker-cli
     image: docker:24.0.7-cli
-    imagePullPolicy: Never
+    imagePullPolicy: IfNotPresent          # <-- исправлено
     command: ['cat']
     tty: true
     volumeMounts:
     - mountPath: /var/run/docker.sock
       name: docker-sock
   - name: jnlp
-    image: host.k3d.internal:5000/jenkins/inbound-agent
-    imagePullPolicy: Never
+    image: host.k3d.internal:5000/jenkins/inbound-agent:latest   # <-- добавлен тег
+    imagePullPolicy: IfNotPresent          # <-- исправлено
     volumeMounts:
     - mountPath: /var/run/docker.sock
       name: docker-sock
@@ -54,7 +54,8 @@ spec:
             steps {
                 container('docker-cli') {
                     script {
-                        withEnv(['DOCKER_CONFIG=/home/jenkins/agent/.docker']) {
+                        // Используем корректный путь для Docker-конфига (в образе docker:cli пользователь root)
+                        withEnv(['DOCKER_CONFIG=/root/.docker']) {
                             sh "docker build -t ${IMAGE_NAME}:${COMMIT} ."
                         }
                     }
@@ -72,7 +73,7 @@ spec:
                             usernameVariable: 'NEXUS_USER',
                             passwordVariable: 'NEXUS_PASS'
                         )]) {
-                            withEnv(['DOCKER_CONFIG=/home/jenkins/agent/.docker']) {
+                            withEnv(['DOCKER_CONFIG=/root/.docker']) {
                                 sh "docker login -u ${NEXUS_USER} -p ${NEXUS_PASS} ${NEXUS_URL}"
                                 sh "docker push ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}"
                             }
