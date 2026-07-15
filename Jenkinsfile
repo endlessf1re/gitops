@@ -18,6 +18,8 @@ spec:
     imagePullPolicy: IfNotPresent
     command: ['cat']
     tty: true
+    securityContext:
+      runAsUser: 0
     volumeMounts:
     - mountPath: /var/run/docker.sock
       name: docker-sock
@@ -38,8 +40,7 @@ spec:
     environment {
         NEXUS_URL = 'host.k3d.internal:5000'
         IMAGE_NAME = 'myapp-flask'
-        // Используем /tmp, доступный для записи всем
-        DOCKER_CONFIG = '/tmp/docker-config'
+        DOCKER_CONFIG = '/tmp/docker-config'   // доступно для записи
     }
 
     stages {
@@ -58,7 +59,6 @@ spec:
             steps {
                 container('docker-cli') {
                     script {
-                        // Создаём каталог и даём права (владелец – текущий пользователь с UID 1000)
                         sh """
                             mkdir -p ${DOCKER_CONFIG}
                             chmod 700 ${DOCKER_CONFIG}
