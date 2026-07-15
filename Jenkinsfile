@@ -1,7 +1,6 @@
 pipeline {
     agent {
         kubernetes {
-            // Описываем под прямо в коде — это гарантирует, что пайплайн запустится везде одинаково
             yaml """
 apiVersion: v1
 kind: Pod
@@ -9,17 +8,22 @@ metadata:
   labels:
     component: jenkins-agent
 spec:
-  # Наш настроенный контекст безопасности для доступа к сокету
   securityContext:
     runAsUser: 1000
     runAsGroup: 1000
     supplementalGroups: [984]
   containers:
-  # Основной контейнер со встроенной утилитой docker
+  # 1. Говорим качать docker-cli из нашего прокси-репозитория Nexus
   - name: docker-cli
-    image: docker:24.0.7-cli
+    image: host.k3d.internal:5000/library/docker:24.0.7-cli
     command: ['cat']
     tty: true
+    volumeMounts:
+    - mountPath: /var/run/docker.sock
+      name: docker-sock
+  # 2. Переопределяем встроенный jnlp-контейнер, чтобы он ТОЖЕ качался через Nexus
+  - name: jnlp
+    image: host.k3d.internal:5000/jenkins/inbound-agent:latest
     volumeMounts:
     - mountPath: /var/run/docker.sock
       name: docker-sock
@@ -50,7 +54,6 @@ spec:
             steps {
                 container('docker-cli') {
                     script {
-                        // Перенаправляем создание папки .docker в доступную для пользователя папку сборки
                         withEnv(['DOCKER_CONFIG=/home/jenkins/agent/.docker']) {
                             sh "docker build -t ${IMAGE_NAME}:${COMMIT} ."
                         }
@@ -69,7 +72,6 @@ spec:
                             usernameVariable: 'NEXUS_USER',
                             passwordVariable: 'NEXUS_PASS'
                         )]) {
-                            // Здесь тоже перенаправляем конфиг, чтобы docker login смог успешно записать токен авторизации
                             withEnv(['DOCKER_CONFIG=/home/jenkins/agent/.docker']) {
                                 sh "docker login -u ${NEXUS_USER} -p ${NEXUS_PASS} ${NEXUS_URL}"
                                 sh "docker push ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}"
