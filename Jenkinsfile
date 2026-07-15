@@ -8,60 +8,82 @@ metadata:
   labels:
     component: jenkins-agent
 spec:
-  securityContext:
-    runAsUser: 1000
-    runAsGroup: 1000
-    supplementalGroups: [984]
   containers:
   - name: docker-cli
     image: docker:24.0.7-cli
-    imagePullPolicy: Never
+    imagePullPolicy: IfNotPresent
     command: ['cat']
     tty: true
+    env:
+    - name: DOCKER_HOST
+      value: tcp://localhost:2375
+  - name: dind
+    image: docker:24.0.7-dind
+    securityContext:
+      privileged: true
+    env:
+    - name: DOCKER_TLS_CERTDIR
+      value: ""
     volumeMounts:
-    - mountPath: /var/run/docker.sock
-      name: docker-sock
-  - name: jnlp
-    image: jenkins/inbound-agent:local-built
-    imagePullPolicy: Never
-    volumeMounts:
-    - mountPath: /var/run/docker.sock
-      name: docker-sock
+    - name: docker-storage
+      mountPath: /var/lib/docker
   volumes:
-  - name: docker-sock
-    hostPath:
-      path: /var/run/docker.sock
+  - name: docker-storage
+    emptyDir: {}
 """
         }
     }
-
     environment {
         NEXUS_URL = 'host.k3d.internal:5000'
         IMAGE_NAME = 'myapp-flask'
+        DOCKER_CONFIG = '/tmp/docker-config'   // доступно для записи
+        DOCKER_BUILDKIT = '0'
     }
-
     stages {
         stage('Checkout') {
             steps {
-                script { 
+                script {
                     checkout scm
                     env.COMMIT = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    echo "COMMIT = ${env.COMMIT}"
+                    echo "IMAGE_NAME = ${env.IMAGE_NAME}"
                 }
             }
         }
-
-        stage('Build Docker Image') {
+        stage('Debug workspace') {
+            steps {
+                container('docker-cli') {
+                    sh 'pwd && ls -la'
+                }
+                container('jnlp') {
+                    sh 'pwd && ls -la'
+                }
+            }
+        }
+        stage('Prepare Docker Config') {
             steps {
                 container('docker-cli') {
                     script {
-                        withEnv(['DOCKER_CONFIG=/home/jenkins/agent/.docker']) {
-                            sh "docker build -t ${IMAGE_NAME}:${COMMIT} ."
-                        }
+                        sh """
+                            mkdir -p ${DOCKER_CONFIG}
+                            chmod 700 ${DOCKER_CONFIG}
+                        """
                     }
                 }
             }
         }
-
+        stage('Build Docker Image') {
+            steps {
+                container('docker-cli') {
+                    script {
+                        if (!env.COMMIT || !env.IMAGE_NAME) {
+                            error "Переменные IMAGE_NAME или COMMIT пустые!"
+                        }
+                        sh "docker build -t ${IMAGE_NAME}:${COMMIT} ."
+                    }
+                }
+            }
+        }
         stage('Push to Nexus') {
             steps {
                 container('docker-cli') {
@@ -72,18 +94,17 @@ spec:
                             usernameVariable: 'NEXUS_USER',
                             passwordVariable: 'NEXUS_PASS'
                         )]) {
-                            withEnv(['DOCKER_CONFIG=/home/jenkins/agent/.docker']) {
-                                sh "docker login -u ${NEXUS_USER} -p ${NEXUS_PASS} ${NEXUS_URL}"
-                                sh "docker push ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}"
-                            }
+                            sh """
+                                docker login -u ${NEXUS_USER} -p ${NEXUS_PASS} ${NEXUS_URL}
+                                docker push ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}
+                            """
                         }
                     }
                 }
             }
         }
-
         stage('Update GitOps') {
-            steps {   
+            steps {
                 script {
                     sshagent(['git-key']) {
                         sh """
@@ -102,7 +123,6 @@ spec:
             }
         }
     }
-
     post {
         always {
             sh "rm -rf gitops-tmp"
