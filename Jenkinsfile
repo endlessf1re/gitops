@@ -37,9 +37,10 @@ spec:
         }
     }
     environment {
-        NEXUS_URL = 'host.k3d.internal:5000'
-        IMAGE_NAME = 'myapp-flask'
-        DOCKER_CONFIG = '/tmp/docker-config'   // доступно для записи
+      NEXUS_URL = 'host.k3d.internal:5000'
+      IMAGE_NAME = 'myapp-flask'
+      DOCKER_CONFIG = '/tmp/docker-config'
+      DOCKER_BUILDKIT = '0'
     }
     stages {
         stage('Checkout') {
