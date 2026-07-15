@@ -109,7 +109,7 @@ spec:
                     script {
                         sh "docker tag ${IMAGE_NAME}:${COMMIT} ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}"
                         withCredentials([usernamePassword(
-                            credentialsId: 'nexus-creds',
+                            credentialsId: 'nexus-cred',
                             usernameVariable: 'NEXUS_USER',
                             passwordVariable: 'NEXUS_PASS'
                         )]) {
