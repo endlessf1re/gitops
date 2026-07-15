@@ -48,10 +48,12 @@ spec:
 
         stage('Build Docker Image') {
             steps {
-                // Говорим Дженкинсу выполнять сборку внутри контейнера docker-cli
                 container('docker-cli') {
                     script {
-                        sh "docker build -t ${IMAGE_NAME}:${COMMIT} ."
+                        // Перенаправляем создание папки .docker в доступную для пользователя папку сборки
+                        withEnv(['DOCKER_CONFIG=/home/jenkins/agent/.docker']) {
+                            sh "docker build -t ${IMAGE_NAME}:${COMMIT} ."
+                        }
                     }
                 }
             }
@@ -67,8 +69,11 @@ spec:
                             usernameVariable: 'NEXUS_USER',
                             passwordVariable: 'NEXUS_PASS'
                         )]) {
-                            sh "docker login -u ${NEXUS_USER} -p ${NEXUS_PASS} ${NEXUS_URL}"
-                            sh "docker push ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}"
+                            // Здесь тоже перенаправляем конфиг, чтобы docker login смог успешно записать токен авторизации
+                            withEnv(['DOCKER_CONFIG=/home/jenkins/agent/.docker']) {
+                                sh "docker login -u ${NEXUS_USER} -p ${NEXUS_PASS} ${NEXUS_URL}"
+                                sh "docker push ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}"
+                            }
                         }
                     }
                 }
