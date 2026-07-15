@@ -72,14 +72,14 @@ spec:
                 }
             }
         }
-stage('Build Docker Image') {
+        stage('Build Docker Image') {
     steps {
         container('docker-cli') {
             script {
                 if (!env.COMMIT || !env.IMAGE_NAME) {
                     error "Переменные IMAGE_NAME или COMMIT пустые!"
                 }
-                sh "docker build -t ${IMAGE_NAME}:${COMMIT} -f python/Dockerfile python"
+                sh "docker build -t ${IMAGE_NAME}:${COMMIT} -f python/app/Dockerfile python/app"
             }
         }
     }
