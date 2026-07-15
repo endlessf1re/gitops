@@ -15,15 +15,15 @@ spec:
   containers:
   - name: docker-cli
     image: docker:24.0.7-cli
-    imagePullPolicy: IfNotPresent          # <-- исправлено
+    imagePullPolicy: IfNotPresent
     command: ['cat']
     tty: true
     volumeMounts:
     - mountPath: /var/run/docker.sock
       name: docker-sock
   - name: jnlp
-    image: host.k3d.internal:5000/jenkins/inbound-agent:latest   # <-- добавлен тег
-    imagePullPolicy: IfNotPresent          # <-- исправлено
+    image: host.k3d.internal:5000/jenkins/inbound-agent:latest
+    imagePullPolicy: IfNotPresent
     volumeMounts:
     - mountPath: /var/run/docker.sock
       name: docker-sock
@@ -38,6 +38,8 @@ spec:
     environment {
         NEXUS_URL = 'host.k3d.internal:5000'
         IMAGE_NAME = 'myapp-flask'
+        // Задаём каталог для Docker-конфига, доступный для пользователя 1000
+        DOCKER_CONFIG = '/home/jenkins/.docker'
     }
 
     stages {
@@ -46,6 +48,23 @@ spec:
                 script { 
                     checkout scm
                     env.COMMIT = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    // Выводим для отладки
+                    echo "COMMIT = ${env.COMMIT}"
+                    echo "IMAGE_NAME = ${env.IMAGE_NAME}"
+                }
+            }
+        }
+
+        stage('Prepare Docker Config') {
+            steps {
+                container('docker-cli') {
+                    script {
+                        // Создаём каталог для конфига и устанавливаем права (на случай, если он не существует)
+                        sh """
+                            mkdir -p ${DOCKER_CONFIG}
+                            chmod 700 ${DOCKER_CONFIG}
+                        """
+                    }
                 }
             }
         }
@@ -54,10 +73,11 @@ spec:
             steps {
                 container('docker-cli') {
                     script {
-                        // Используем корректный путь для Docker-конфига (в образе docker:cli пользователь root)
-                        withEnv(['DOCKER_CONFIG=/root/.docker']) {
-                            sh "docker build -t ${IMAGE_NAME}:${COMMIT} ."
+                        // Проверяем, что переменные не пустые
+                        if (!env.COMMIT || !env.IMAGE_NAME) {
+                            error "Переменные IMAGE_NAME или COMMIT пустые!"
                         }
+                        sh "docker build -t ${IMAGE_NAME}:${COMMIT} ."
                     }
                 }
             }
@@ -73,10 +93,10 @@ spec:
                             usernameVariable: 'NEXUS_USER',
                             passwordVariable: 'NEXUS_PASS'
                         )]) {
-                            withEnv(['DOCKER_CONFIG=/root/.docker']) {
-                                sh "docker login -u ${NEXUS_USER} -p ${NEXUS_PASS} ${NEXUS_URL}"
-                                sh "docker push ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}"
-                            }
+                            sh """
+                                docker login -u ${NEXUS_USER} -p ${NEXUS_PASS} ${NEXUS_URL}
+                                docker push ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}
+                            """
                         }
                     }
                 }
