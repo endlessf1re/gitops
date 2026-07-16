@@ -8,6 +8,10 @@ metadata:
   labels:
     component: jenkins-agent
 spec:
+  hostAliases:
+  - ip: "172.18.0.1"
+    hostnames:
+    - "host.k3d.internal"
   containers:
   - name: docker-cli
     image: docker:24.0.7-cli
