@@ -81,3 +81,60 @@ spec:
                 }
             }
         }
+        stage('Build Docker Image') {
+            steps {
+                container('docker-cli') {
+                    script {
+                        if (!env.COMMIT || !env.IMAGE_NAME) {
+                            error "Переменные IMAGE_NAME или COMMIT пустые!"
+                        }
+                        withCredentials([usernamePassword(
+                            credentialsId: 'nexus-cred',
+                            usernameVariable: 'NEXUS_USER',
+                            passwordVariable: 'NEXUS_PASS'
+                        )]) {
+                            sh """
+                                docker login -u ${NEXUS_USER} -p ${NEXUS_PASS} ${NEXUS_URL}
+                                docker build -t ${IMAGE_NAME}:${COMMIT} -f python/app/Dockerfile python/app
+                            """
+                        }
+                    }
+                }
+            }
+        }
+        stage('Push to Nexus') {
+            steps {
+                container('docker-cli') {
+                    script {
+                        sh "docker tag ${IMAGE_NAME}:${COMMIT} ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}"
+                        sh "docker push ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}"
+                    }
+                }
+            }
+        }
+        stage('Update GitOps') {
+            steps {
+                script {
+                    sshagent(['git-key']) {
+                        sh """
+                            rm -rf gitops-tmp
+                            git -c core.sshCommand="ssh -o StrictHostKeyChecking=no" clone git@github.com:endlessf1re/gitops.git gitops-tmp
+                            cd gitops-tmp
+                            sed -i "s|image: .*|image: ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}|g" apps/myapp/deployment.yaml
+                            git config user.name "Jenkins CI"
+                            git config user.email "jenkins@local"
+                            git add .
+                            git commit -m "Update image to ${COMMIT} [skip ci]"
+                            git push origin main
+                        """
+                    }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            sh "rm -rf gitops-tmp"
+        }
+    }
+}
