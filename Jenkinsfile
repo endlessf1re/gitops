@@ -41,9 +41,10 @@ spec:
         }
     }
     environment {
-        NEXUS_URL = 'host.k3d.internal:8083'
+        NEXUS_PULL_URL = 'host.k3d.internal:8083'   // docker-group — для pull базовых образов
+        NEXUS_PUSH_URL = 'host.k3d.internal:5000'   // docker-hosted — для push своих образов
         IMAGE_NAME = 'myapp-flask'
-        DOCKER_CONFIG = '/tmp/docker-config'
+        DOCKER_CONFIG = '/tmp/docker-config'        // доступно для записи
         DOCKER_BUILDKIT = '0'
     }
     stages {
@@ -101,7 +102,7 @@ spec:
                             passwordVariable: 'NEXUS_PASS'
                         )]) {
                             sh """
-                                docker login -u ${NEXUS_USER} -p ${NEXUS_PASS} ${NEXUS_URL}
+                                docker login -u ${NEXUS_USER} -p ${NEXUS_PASS} ${NEXUS_PULL_URL}
                                 docker build -t ${IMAGE_NAME}:${COMMIT} -f python/app/Dockerfile python/app
                             """
                         }
@@ -113,8 +114,17 @@ spec:
             steps {
                 container('docker-cli') {
                     script {
-                        sh "docker tag ${IMAGE_NAME}:${COMMIT} ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}"
-                        sh "docker push ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}"
+                        withCredentials([usernamePassword(
+                            credentialsId: 'nexus-cred',
+                            usernameVariable: 'NEXUS_USER',
+                            passwordVariable: 'NEXUS_PASS'
+                        )]) {
+                            sh """
+                                docker login -u ${NEXUS_USER} -p ${NEXUS_PASS} ${NEXUS_PUSH_URL}
+                                docker tag ${IMAGE_NAME}:${COMMIT} ${NEXUS_PUSH_URL}/${IMAGE_NAME}:${COMMIT}
+                                docker push ${NEXUS_PUSH_URL}/${IMAGE_NAME}:${COMMIT}
+                            """
+                        }
                     }
                 }
             }
@@ -127,7 +137,7 @@ spec:
                             rm -rf gitops-tmp
                             git -c core.sshCommand="ssh -o StrictHostKeyChecking=no" clone git@github.com:endlessf1re/gitops.git gitops-tmp
                             cd gitops-tmp
-                            sed -i "s|image: .*|image: ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}|g" apps/myapp/deployment.yaml
+                            sed -i "s|image: .*|image: ${NEXUS_PUSH_URL}/${IMAGE_NAME}:${COMMIT}|g" apps/myapp/deployment.yaml
                             git config user.name "Jenkins CI"
                             git config user.email "jenkins@local"
                             git add .
