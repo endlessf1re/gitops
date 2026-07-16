@@ -34,7 +34,7 @@ spec:
         }
     }
     environment {
-        NEXUS_URL = 'host.k3d.internal:5000'
+        NEXUS_URL = 'host.k3d.internal:8083'
         IMAGE_NAME = 'myapp-flask'
         DOCKER_CONFIG = '/tmp/docker-config'   // доступно для записи
         DOCKER_BUILDKIT = '0'
@@ -47,16 +47,6 @@ spec:
                     env.COMMIT = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
                     echo "COMMIT = ${env.COMMIT}"
                     echo "IMAGE_NAME = ${env.IMAGE_NAME}"
-                }
-            }
-        }
-        stage('Debug workspace') {
-            steps {
-                container('docker-cli') {
-                    sh 'pwd && ls -la'
-                }
-                container('jnlp') {
-                    sh 'pwd && ls -la'
                 }
             }
         }
@@ -73,78 +63,21 @@ spec:
             }
         }
         stage('Wait for Docker daemon') {
-    steps {
-        container('docker-cli') {
-            sh '''
-                echo "Waiting for docker daemon..."
-                for i in $(seq 1 30); do
-                    if docker info >/dev/null 2>&1; then
-                        echo "Docker daemon is ready"
-                        exit 0
-                    fi
-                    echo "Attempt $i/30: daemon not ready yet, sleeping 2s..."
-                    sleep 2
-                done
-                echo "Docker daemon did not become ready in time"
-                exit 1
-            '''
-        }
-    }
-}
-        stage('Build Docker Image') {
-    steps {
-        container('docker-cli') {
-            script {
-                if (!env.COMMIT || !env.IMAGE_NAME) {
-                    error "Переменные IMAGE_NAME или COMMIT пустые!"
-                }
-                sh "docker build -t ${IMAGE_NAME}:${COMMIT} -f python/app/Dockerfile python/app"
-            }
-        }
-    }
-}
-        stage('Push to Nexus') {
             steps {
                 container('docker-cli') {
-                    script {
-                        sh "docker tag ${IMAGE_NAME}:${COMMIT} ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}"
-                        withCredentials([usernamePassword(
-                            credentialsId: 'nexus-cred',
-                            usernameVariable: 'NEXUS_USER',
-                            passwordVariable: 'NEXUS_PASS'
-                        )]) {
-                            sh """
-                                docker login -u ${NEXUS_USER} -p ${NEXUS_PASS} ${NEXUS_URL}
-                                docker push ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}
-                            """
-                        }
-                    }
+                    sh '''
+                        echo "Waiting for docker daemon..."
+                        for i in $(seq 1 30); do
+                            if docker info >/dev/null 2>&1; then
+                                echo "Docker daemon is ready"
+                                exit 0
+                            fi
+                            echo "Attempt $i/30: daemon not ready yet, sleeping 2s..."
+                            sleep 2
+                        done
+                        echo "Docker daemon did not become ready in time"
+                        exit 1
+                    '''
                 }
             }
         }
-        stage('Update GitOps') {
-            steps {
-                script {
-                    sshagent(['git-key']) {
-                        sh """
-                            rm -rf gitops-tmp
-                            git -c core.sshCommand="ssh -o StrictHostKeyChecking=no" clone git@github.com:endlessf1re/gitops.git gitops-tmp
-                            cd gitops-tmp
-                            sed -i "s|image: .*|image: ${NEXUS_URL}/${IMAGE_NAME}:${COMMIT}|g" apps/myapp/deployment.yaml
-                            git config user.name "Jenkins CI"
-                            git config user.email "jenkins@local"
-                            git add .
-                            git commit -m "Update image to ${COMMIT} [skip ci]"
-                            git push origin main
-                        """
-                    }
-                }
-            }
-        }
-    }
-    post {
-        always {
-            sh "rm -rf gitops-tmp"
-        }
-    }
-}
