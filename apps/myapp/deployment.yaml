@@ -17,6 +17,6 @@ spec:
       - name: nexus-auth
       containers:
       - name: app
-        image: host.k3d.internal:5000/nginx-test
+        image: host.k3d.internal:5000/myapp-flask:3a31a3c
         ports:
         - containerPort: 80
