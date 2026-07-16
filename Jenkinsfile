@@ -28,6 +28,9 @@ spec:
     env:
     - name: DOCKER_TLS_CERTDIR
       value: ""
+    args:
+    - "--insecure-registry=host.k3d.internal:8083"
+    - "--insecure-registry=host.k3d.internal:5000"
     volumeMounts:
     - name: docker-storage
       mountPath: /var/lib/docker
@@ -40,7 +43,7 @@ spec:
     environment {
         NEXUS_URL = 'host.k3d.internal:8083'
         IMAGE_NAME = 'myapp-flask'
-        DOCKER_CONFIG = '/tmp/docker-config'   // доступно для записи
+        DOCKER_CONFIG = '/tmp/docker-config'
         DOCKER_BUILDKIT = '0'
     }
     stages {
