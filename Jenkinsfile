@@ -142,7 +142,7 @@ spec:
                             git config user.email "jenkins@local"
                             git add .
                             git commit -m "Update image to ${COMMIT} [skip ci]"
-                            git push origin main
+                            git push origin master
                         """
                     }
                 }
