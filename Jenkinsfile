@@ -129,25 +129,29 @@ spec:
                 }
             }
         }
-        stage('Update GitOps') {
-            steps {
-                script {
-                    sshagent(['git-key']) {
-                        sh """
-                            rm -rf gitops-tmp
-                            git -c core.sshCommand="ssh -o StrictHostKeyChecking=no" clone git@github.com:endlessf1re/gitops.git gitops-tmp
-                            cd gitops-tmp
-                            sed -i "s|image: .*|image: ${NEXUS_PUSH_URL}/${IMAGE_NAME}:${COMMIT}|g" apps/myapp/deployment.yaml
-                            git config user.name "Jenkins CI"
-                            git config user.email "jenkins@local"
-                            git add .
-                            git commit -m "Update image to ${COMMIT} [skip ci]"
-                            git push origin master
-                        """
-                    }
-                }
+stage('Update GitOps') {
+    steps {
+        script {
+            sshagent(['git-key']) {
+                sh """
+                    rm -rf gitops-tmp
+                    git -c core.sshCommand="ssh -o StrictHostKeyChecking=no" clone git@github.com:endlessf1re/gitops.git gitops-tmp
+                    cd gitops-tmp
+                    sed -i "s|image: .*|image: ${NEXUS_PUSH_URL}/${IMAGE_NAME}:${COMMIT}|g" apps/myapp/deployment.yaml
+                    git config user.name "Jenkins CI"
+                    git config user.email "jenkins@local"
+                    git add .
+                    if git diff --staged --quiet; then
+                        echo "No changes to commit, skipping push"
+                    else
+                        git commit -m "Update image to ${COMMIT} [skip ci]"
+                        git push origin master
+                    fi
+                """
             }
         }
+    }
+}
     }
     post {
         always {
